@@ -38,9 +38,24 @@ void VBufBackend_t::initialize() {
 	registerWindowsHook(WH_CALLWNDPROC,destroy_callWndProcHook);
 	registerWindowsHook(WH_CALLWNDPROC,renderThread_callWndProcHook);
 	LOG_DEBUG(L"Registered hook, sending message...");
-	SendMessage((HWND)UlongToHandle(rootDocHandle),wmRenderThreadInitialize,(WPARAM)this,0);
+	bool callbackFired = false;
+	if(SendMessageCallback((HWND)UlongToHandle(rootDocHandle),wmRenderThreadInitialize,(WPARAM)this,0,renderThread_initComplete,(ULONG_PTR)&callbackFired)) {
+		// Wait until the callback has fired
+		while (!callbackFired) {
+			if(MsgWaitForMultipleObjectsEx(0,NULL,INFINITE,QS_SENDMESSAGE,MWMO_INPUTAVAILABLE)!=WAIT_OBJECT_0) {
+				break;
+			}
+			MSG msg;
+			PeekMessage(&msg,(HWND)-1,0,0,PM_NOREMOVE);
+		}
+	}
 	LOG_DEBUG(L"Message sent, unregistering hook");
 	unregisterWindowsHook(WH_CALLWNDPROC,renderThread_callWndProcHook);
+}
+
+VOID CALLBACK VBufBackend_t::renderThread_initComplete(HWND hwnd, UINT msg, ULONG_PTR data, LRESULT lResult) {
+	bool* pdone = (bool*)data;
+	*pdone = true;
 }
 
 void VBufBackend_t::forceUpdate() {
